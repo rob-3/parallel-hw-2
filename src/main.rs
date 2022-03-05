@@ -54,6 +54,8 @@ fn problem1() {
                         if is_cupcake.load(Ordering::SeqCst) {
                             is_cupcake.store(false, Ordering::SeqCst);
                             has_eaten = true;
+                            counter += 1;
+                            is_cupcake.store(true, Ordering::SeqCst);
                         }
                     }
                     if counter == GUESTS {
