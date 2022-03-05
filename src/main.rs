@@ -1,5 +1,8 @@
+extern crate queues;
 extern crate rand;
 
+use std::sync::Mutex;
+use std::thread::JoinHandle;
 use std::{
     hint,
     sync::{
@@ -9,11 +12,17 @@ use std::{
     thread,
 };
 
+use queues::{queue, IsQueue, Queue};
 use rand::Rng;
 
-const GUESTS: i32 = 150;
+// set this to true to print out extra output
+const OUTPUT: bool = true;
 
-fn main() {
+const GUESTS: i32 = 150;
+const REQUEUE_RATE: f64 = 0.75;
+
+fn problem1() {
+    print_in_box("Problem 1");
     let is_cupcake = Arc::new(AtomicBool::new(true));
     let invited_guest = Arc::new(AtomicI32::new(0));
     let mut threads = vec![];
@@ -31,7 +40,9 @@ fn main() {
                         counter += 1;
                         is_cupcake.store(true, Ordering::SeqCst);
                     }
-                    println!("Boss thread woke up: {counter} cupcakes have been eaten total!");
+                    if OUTPUT {
+                        println!("Boss thread woke up: {counter} cupcakes have been eaten total!");
+                    }
                     if !has_eaten {
                         if is_cupcake.load(Ordering::SeqCst) {
                             is_cupcake.store(false, Ordering::SeqCst);
@@ -77,4 +88,98 @@ fn main() {
         }
     }
     println!("All guests have eaten!");
+}
+
+fn problem2() {
+    print_in_box("Problem 2");
+    /*
+     * I suggest the queuing strategy. This strategy reduces contention by making sure only a
+     * single guest is even trying to enter the room. It also has an element of "fairness" in that
+     * guests cannot get unlucky and never get access to the vase if others keep beating them to
+     * the punch.
+     *
+     * The disadvantage of strategy 3 is that a queue is required to exist and be managed, and the
+     * guests are forced to wait because they might reach the front of the queue at any time. With
+     * strategy 1 or 2, guests might be able to go do other things if their attempt to get access
+     * to the showroom fails.
+     */
+    let threads: Arc<Mutex<Vec<JoinHandle<()>>>> = Arc::new(Mutex::new(vec![]));
+    // fill queue with everyone to start
+    let queue = Arc::new(Mutex::new({
+        let mut q = queue![];
+        // don't include first guest, we'll manually let them in
+        for i in 1..GUESTS {
+            if let Err(e) = q.add(i) {
+                println!("{e}");
+                return;
+            }
+        }
+        q
+    }));
+    let current_guest = Arc::new(AtomicI32::new(0));
+
+    // we represent the showroom with an int we can increment
+    let showroom = Arc::new(Mutex::new(0));
+
+    let mut thread_setup = threads.lock().unwrap();
+    for i in 0..GUESTS {
+        let queue = queue.clone();
+        let current_guest = current_guest.clone();
+        let my_threads = threads.clone();
+        let showroom = showroom.clone();
+        thread_setup.push(thread::spawn(move || loop {
+            thread::park();
+            if current_guest.load(Ordering::SeqCst) == i {
+                let mut showroom = showroom.lock().unwrap();
+                *showroom += 1;
+                if OUTPUT {
+                    let showroom = *showroom;
+                    println!("Guest #{i} visited the showroom for a total of {showroom} visits");
+                }
+                let mut queue = queue.lock().unwrap();
+                if let Ok(next_guest) = queue.remove() {
+                    current_guest.store(next_guest, Ordering::SeqCst);
+                    my_threads.lock().unwrap()[next_guest as usize]
+                        .thread()
+                        .unpark();
+                    if rand::random::<f64>() < REQUEUE_RATE {
+                        if let Err(e) = queue.add(i) {
+                            println!("{e}");
+                            return;
+                        }
+                    }
+                } else {
+                    current_guest.store(-1, Ordering::SeqCst);
+                }
+            }
+        }));
+    }
+    // make sure we unlock
+    drop(thread_setup);
+    threads.lock().unwrap()[0].thread().unpark();
+    while current_guest.load(Ordering::SeqCst) != -1 {
+        hint::spin_loop();
+    }
+    println!("Queue is empty!");
+    let showroom = *showroom.lock().unwrap();
+    println!("Total visitors: {showroom}");
+}
+
+fn main() {
+    problem1();
+    problem2();
+}
+
+fn print_in_box(s: &str) {
+    print!("┏");
+    for _ in 0..s.len() {
+        print!("━");
+    }
+    println!("┓");
+    println!("┃{s}┃");
+    print!("┗");
+    for _ in 0..s.len() {
+        print!("━");
+    }
+    println!("┛");
 }
