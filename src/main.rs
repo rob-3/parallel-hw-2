@@ -16,7 +16,13 @@ use queues::{queue, IsQueue, Queue};
 use rand::Rng;
 
 // set this to true to print out extra output
-const OUTPUT: bool = true;
+const OUTPUT: bool = false;
+
+fn main() {
+    // comment these out if you only wish to test one problem at a time
+    problem1();
+    problem2();
+}
 
 const GUESTS: i32 = 150;
 const REQUEUE_RATE: f64 = 0.75;
@@ -163,11 +169,6 @@ fn problem2() {
     println!("Queue is empty!");
     let showroom = *showroom.lock().unwrap();
     println!("Total visitors: {showroom}");
-}
-
-fn main() {
-    problem1();
-    problem2();
 }
 
 fn print_in_box(s: &str) {
