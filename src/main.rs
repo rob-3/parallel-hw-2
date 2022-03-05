@@ -14,6 +14,7 @@ use std::{
 
 use queues::{queue, IsQueue, Queue};
 use rand::Rng;
+use rand::prelude::SliceRandom;
 
 // set this to true to print out extra output
 const OUTPUT: bool = false;
@@ -113,8 +114,18 @@ fn problem2() {
     // fill queue with everyone to start
     let queue = Arc::new(Mutex::new({
         let mut q = queue![];
+        let mut rng = rand::thread_rng();
         // don't include first guest, we'll manually let them in
-        for i in 1..GUESTS {
+        // set up guests in a random initial order
+        let random_guests = {
+            let mut random_guests = vec![];
+            for i in 1..GUESTS {
+                random_guests.push(i);
+            }
+            random_guests.shuffle(&mut rng);
+            random_guests
+        };
+        for i in random_guests {
             if let Err(e) = q.add(i) {
                 println!("{e}");
                 return;
