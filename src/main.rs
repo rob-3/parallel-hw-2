@@ -35,21 +35,28 @@ fn problem1() {
     let mut threads = vec![];
 
     for i in 0..GUESTS {
+        // we need reference clones to make Rust's reference counting happy
         let is_cupcake = is_cupcake.clone();
         let invited_guest = invited_guest.clone();
         let mut has_eaten = false;
+        // if we are the boss
         if i == 0 {
             let mut counter = 0;
             threads.push(thread::spawn(move || loop {
+                // block until we are woken up
                 thread::park();
+                // check to ensure no spurious wakeup
                 if invited_guest.load(Ordering::SeqCst) == i {
+                    // check for missing cupcake
                     if is_cupcake.load(Ordering::SeqCst) == false {
                         counter += 1;
+                        // request new cupcake
                         is_cupcake.store(true, Ordering::SeqCst);
                     }
                     if OUTPUT {
                         println!("Boss thread woke up: {counter} cupcakes have been eaten total!");
                     }
+                    // eat cupcake if we haven't eaten yet
                     if !has_eaten {
                         if is_cupcake.load(Ordering::SeqCst) {
                             is_cupcake.store(false, Ordering::SeqCst);
@@ -59,6 +66,7 @@ fn problem1() {
                         }
                     }
                     if counter == GUESTS {
+                        // send completion signal if every has eaten
                         invited_guest.store(-2, Ordering::SeqCst);
                     } else {
                         invited_guest.store(-1, Ordering::SeqCst);
@@ -66,9 +74,11 @@ fn problem1() {
                 }
             }));
         } else {
+            // regular guest
             threads.push(thread::spawn(move || loop {
                 thread::park();
                 if invited_guest.load(Ordering::SeqCst) == i {
+                    // eat if we haven't
                     if !has_eaten {
                         if is_cupcake.load(Ordering::SeqCst) {
                             is_cupcake.store(false, Ordering::SeqCst);
@@ -149,12 +159,17 @@ fn problem2() {
         thread_setup.push(thread::spawn(move || loop {
             thread::park();
             if current_guest.load(Ordering::SeqCst) == i {
+                // we don't have to do this, but it's the easiest way to show that a thread got
+                // access to something
                 let mut showroom = showroom.lock().unwrap();
                 *showroom += 1;
                 if OUTPUT {
                     let showroom = *showroom;
                     println!("Guest #{i} visited the showroom for a total of {showroom} visits");
                 }
+                // unlock early just to be sure
+                drop(showroom);
+                // notify next guest and possibly get back in line
                 let mut queue = queue.lock().unwrap();
                 if let Ok(next_guest) = queue.remove() {
                     current_guest.store(next_guest, Ordering::SeqCst);
